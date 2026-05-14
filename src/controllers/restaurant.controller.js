@@ -34,40 +34,39 @@ const getRestaurants = async (req, res) => {
 /**
  * Get Restaurant Menu items with category details.
  * 
- * [PLANTED PERFORMANCE PROBLEM 4]
- * N+1 for category details inside a loop.
+ * FIXED: Replaced N+1 loop pattern with a single JOIN query.
+ * Before: 1 + N queries (menu items + category for each item)
+ * After: 1 query with proper JOIN
  */
 const getMenu = async (req, res) => {
     const { id } = req.params;
 
     console.log(`[Restaurant Controller] Fetching menu for Restaurant #${id}`);
 
-    // Query 1: Get menu items
-    const menuItemsResult = await db.query(
-        'SELECT * FROM menu_items WHERE restaurant_id = $1 AND is_available = TRUE',
+    // Single query with JOIN to fetch menu items with category details
+    const menuResult = await db.query(
+        `SELECT
+            mi.id,
+            mi.restaurant_id,
+            mi.category_id,
+            mi.name,
+            mi.description,
+            mi.price,
+            mi.available,
+            c.name as category_name
+        FROM menu_items mi
+        JOIN categories c ON c.id = mi.category_id
+        WHERE mi.restaurant_id = $1 AND mi.available = TRUE
+        ORDER BY mi.category_id, mi.name`,
         [id]
     );
-    const menuItems = menuItemsResult.rows;
-
-    const populatedMenu = [];
-
-    // // Attach category details to each item (N+1 query pattern)
-    // For each menu item, perform a separate query to fetch its category name.
-    for (const item of menuItems) {
-        const categoryResult = await db.query(
-            'SELECT * FROM categories WHERE id = $1',
-            [item.category_id]
-        );
-        
-        populatedMenu.push({
-            ...item,
-            category: categoryResult.rows[0] ? categoryResult.rows[0].name : 'Uncategorized'
-        });
-    }
 
     res.json({
         restaurant_id: id,
-        menu: populatedMenu
+        menu: menuResult.rows.map(item => ({
+            ...item,
+            category: item.category_name
+        }))
     });
 };
 
