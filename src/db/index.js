@@ -5,6 +5,9 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+// Track queries in current request context
+let currentReq = null;
+
 module.exports = {
   /**
    * Execute a SQL query.
@@ -18,10 +21,15 @@ module.exports = {
       
       if (process.env.LOG_QUERIES === 'true') {
         console.log('[DB Query]', {
-          text: text.replace(/\s+/g, ' ').trim(),
+          text: text.replace(/\s+/g, ' ').trim().substring(0, 100),
           duration: `${duration}ms`,
           rows: res.rowCount,
         });
+      }
+      
+      // Track query count if in request context
+      if (global.currentReq) {
+        global.currentReq._queryCount++;
       }
       
       return res;
@@ -32,5 +40,10 @@ module.exports = {
   },
   
   // Expose pool for transactions or advanced usage
-  pool
+  pool,
+  
+  // Set request context for query tracking
+  setRequestContext(req) {
+    global.currentReq = req;
+  }
 };
