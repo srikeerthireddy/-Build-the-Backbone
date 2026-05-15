@@ -7,6 +7,7 @@ const authController = require('./controllers/auth.controller');
 const restaurantController = require('./controllers/restaurant.controller');
 const orderController = require('./controllers/order.controller');
 const authMiddleware = require('./middleware/auth.middleware');
+const orderRateLimit = require('./middleware/rateLimiter.middleware');
 
 const app = express();
 
@@ -39,7 +40,7 @@ app.get('/api/restaurants/:id/menu', restaurantController.getMenu);
 
 // Authenticated Routes
 app.use('/api/orders', authMiddleware);
-app.post('/api/orders', orderController.createOrder);
+app.post('/api/orders', orderRateLimit, orderController.createOrder);
 app.get('/api/orders/history', orderController.getOrderHistory);
 app.get('/api/orders/:id', orderController.getOrderById);
 

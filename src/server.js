@@ -1,6 +1,9 @@
 const app = require('./app');
 require('dotenv').config();
 
+// Start background workers
+require('./workers/email.worker')
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
