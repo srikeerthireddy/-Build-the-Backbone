@@ -1,14 +1,32 @@
 const db = require('../db');
+const redis = require('../lib/redis');
 
 /**
  * Get List of Restaurants with filters.
  * 
- * [PLANTED PERFORMANCE PROBLEM 3]
- * Missing indexes on WHERE and JOIN columns in the database.
- * This query will scan the full table even with a simple city filter.
+ * FIXED: Added Redis caching with 5-minute TTL.
+ * Cache-aside pattern:
+ * 1. Check Redis first
+ * 2. If miss, query database
+ * 3. Store result in Redis for 300 seconds
  */
 const getRestaurants = async (req, res) => {
-    const { city, limit = 20, offset = 0 } = req.query;
+    const { city, limit = 20, offset = 0, sort = 'rating' } = req.query;
+    
+    // Build deterministic cache key including all query params
+    const cacheKey = `restaurants:city=${city || 'all'}:page=${offset}:limit=${limit}:sort=${sort}`;
+    
+    try {
+        // Check Redis cache first
+        const cachedData = await redis.get(cacheKey);
+        if (cachedData) {
+            res.set('X-Cache', 'HIT');
+            return res.json(JSON.parse(cachedData));
+        }
+    } catch (err) {
+        console.error('[Redis] Cache get failed (non-fatal):', err.message);
+        // Continue to database query if cache fails
+    }
 
     let queryStr = 'SELECT * FROM restaurants';
     const params = [];
@@ -24,11 +42,21 @@ const getRestaurants = async (req, res) => {
     }
 
     const result = await db.query(queryStr, params);
-
-    res.json({
+    
+    const data = {
         total: result.rowCount,
         restaurants: result.rows
-    });
+    };
+
+    // Store in Redis with 5-minute TTL (300 seconds)
+    try {
+        await redis.setex(cacheKey, 300, JSON.stringify(data));
+    } catch (err) {
+        console.error('[Redis] Cache set failed (non-fatal):', err.message);
+    }
+
+    res.set('X-Cache', 'MISS');
+    res.json(data);
 };
 
 /**
